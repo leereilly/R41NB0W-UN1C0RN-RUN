@@ -9,7 +9,7 @@ Created for [js13kGames](https://js13kgames.com/) competition.
 
 <p align="center">
   <a href="index.html">
-    <img src="https://64.media.tumblr.com/1b7e13deed101abcb589e52a10f73201/tumblr_pv5623ZzA71qciqqno5_540.gif" alt="Rainbow Unicorn Run cover art" width="540">
+    <img src="assets/gameplay.png" alt="Rainbow Unicorn Run gameplay" width="720">
   </a>
 </p>
 
@@ -19,17 +19,13 @@ Fly a unicorn through a neon tunnel, chase glowing rings in rainbow order, and t
 
 Download and open `index.html` in a modern browser, or serve it locally using the commands below. The link above points to the game file; no hosted demo is configured.
 
-<!-- Add a gameplay recording when assets/gameplay.gif is available:
-![Rainbow Unicorn Run — animated gameplay preview](assets/gameplay.gif)
--->
-
 **Controls:** Mouse, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>, or arrow keys to steer · <kbd>Space</kbd> or **Let's Fly / Play Again** to start or replay after a run. Holding Space does not repeatedly restart. Center the highlighted ring on the aiming dot; keyboard steering holds its destination when released.
 
 **VR:** On compatible WebXR browsers and headsets, serve over HTTPS or localhost and select **Enter VR**. Look to steer; use the headset's select action or look at the circular target for a moment to start/replay. An in-headset HUD shows the next color, score, best, hearts, and perfect chain.
 
 ## Features
 
-- **Find your flow:** start at speed 22, with the first ring row about 0.82 seconds away. Clockwise or counterclockwise color routes vary each run; gentle arcs, zigzags, and narrow/wide layouts replace random shuffles and spinning targets.
+- **Find your flow:** start at speed 22, with the first ring row about 0.82 seconds away. Each completed rainbow builds toward speed 30, while wider gaps between rows keep the color choices readable. Clockwise or counterclockwise routes vary each run; gentle arcs, zigzags, and narrow/wide layouts replace random shuffles and spinning targets.
 - **Read the route:** the required color has a bright outer halo and a color-name label. The HUD shows rainbow progress and an approaching-row meter.
 - **Make precision pay:** perfect hits, three-hit chain bonuses, rainbow celebrations, short musical cues, and compact particle bursts reward good flying. Spoken color cues are limited to the start, completed rainbows, and mistakes, where supported.
 - **Chase your best:** a local best score survives reloads when browser storage is available. End-of-run results show score, best/new best, completed rainbows, and perfect hits, with one-button replay.
@@ -48,7 +44,7 @@ Collect **red → orange → yellow → green → blue → purple**, then repeat
 
 You have **three hearts**. A miss is no longer free: flying between rings costs a heart, just like the wrong color. After either mistake, your required color stays the same, and a brief recovery slowdown helps you get back on route. Three mistakes end the run; passed rows cannot score twice.
 
-Each completed rainbow increases speed, capped at 28, and gradually tightens spacing to 22.4. Regular decisions remain approximately **0.8–1.09 seconds apart**, rather than accelerating beyond comfortable steering reach. Mistakes add a short breather. The collision radius remains below one unit; the glowing outer halo is a guide, not an enlarged hitbox.
+Each completed rainbow increases speed by 1.25, capped at 30, while row spacing gradually settles from 26 to 24.8. Regular decisions remain approximately **0.83–1.18 seconds apart**, keeping colors more separated even as the pace increases. Mistakes add a short breather. The collision radius remains below one unit; the glowing outer halo is a guide, not an enlarged hitbox.
 
 Best scores are stored only in this browser/origin. Blocked storage or malformed saved scores show a nonfatal warning; the game remains playable, but saving may be unavailable.
 

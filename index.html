@@ -96,7 +96,7 @@ globalThis.RainbowRun = (() => {
   function createRun(random = Math.random) {
     const run = {
       phase: "playing", score: 0, multiplier: 1, hearts: 3, target: 0,
-      rainbows: 0, perfects: 0, chain: 0, speed: 22, spacing: 24, recovery: 0,
+      rainbows: 0, perfects: 0, chain: 0, speed: 22, spacing: 26, recovery: 0,
       random, direction: random() < .5 ? -1 : 1, rowNumber: 0,
       route: {phase: -Math.PI / 2, x: 0, y: 0, radius: 2.3},
       destination: null, rows: []
@@ -155,8 +155,8 @@ globalThis.RainbowRun = (() => {
     const rainbow = run.target === 0;
     if (rainbow) {
       run.rainbows++;
-      run.speed = Math.min(28, 22 + run.rainbows);
-      run.spacing = Math.max(22.4, 24 - .4 * run.rainbows);
+      run.speed = Math.min(30, 22 + run.rainbows * 1.25);
+      run.spacing = Math.max(24.8, 26 - .2 * run.rainbows);
     }
     return {kind: perfect ? "perfect" : "correct", points, rainbow, chainBonus};
   }

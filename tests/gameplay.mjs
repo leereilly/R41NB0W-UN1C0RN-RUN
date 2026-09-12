@@ -22,9 +22,9 @@ test("new runs reset all gameplay and route state without reusing rows", () => {
     ["playing", 0, 1, 3, 0, 0, 0, 0]
   );
   assert.equal(fresh.speed, 22);
-  assert.equal(fresh.spacing, 24);
+  assert.equal(fresh.spacing, 26);
   assert.equal(fresh.recovery, 0);
-  assert.deepEqual(plain(fresh.rows.map(row => row.z)), [-18, -42, -66, -90]);
+  assert.deepEqual(plain(fresh.rows.map(row => row.z)), [-18, -44, -70, -96]);
   assert.notEqual(fresh.rows[0], run.rows[0]);
   assert.ok(fresh.rows.every(row => !row.crossed));
 });
@@ -39,8 +39,8 @@ test("precision uses the pre-increment multiplier; every third perfect earns 300
   assert.equal(run.chain, 6);
   assert.equal(run.rainbows, 1);
   assert.equal(run.target, 0);
-  assert.equal(run.speed, 23);
-  assert.equal(run.spacing, 23.6);
+  assert.equal(run.speed, 23.25);
+  assert.equal(run.spacing, 25.8);
   assert.ok(events[5].rainbow && events[5].chainBonus);
 });
 
@@ -123,13 +123,13 @@ test("crossings resolve chronologically, stop at death, and never score afterwar
 test("recycled rows use bounded difficulty and stay in chronological order", () => {
   const run = game.createRun(seeded(12));
   for (let i = 0; i < 200; i++) game.resolve(run, run.target, .5);
-  assert.equal(run.speed, 28);
-  assert.equal(run.spacing, 22.4);
+  assert.equal(run.speed, 30);
+  assert.equal(run.spacing, 24.8);
   run.rows[0].z = 8;
   run.rows[0].crossed = true;
   const farthest = Math.min(...run.rows.map(row => row.z));
   game.advance(run, 0, {x: 0, y: 0}, {x: 0, y: 0});
-  assert.equal(run.rows[0].z, farthest - 22.4);
+  assert.equal(run.rows[0].z, farthest - 24.8);
   assert.equal(run.rows[0].crossed, false);
 });
 
@@ -219,8 +219,8 @@ for (const hz of [30, 60, 120]) {
           assert.ok(event.points > 0, `seed ${seed}, row ${collected}, ${event.kind}`);
           collected++;
         }
-        assert.ok(run.spacing / run.speed >= .8 - 1e-10);
-        assert.ok(run.spacing / run.speed <= 24 / 22);
+        assert.ok(run.spacing / run.speed >= 24.8 / 30 - 1e-10);
+        assert.ok(run.spacing / run.speed <= 26 / 22);
       }
       assert.equal(collected, 240);
       assert.equal(run.hearts, 3);
@@ -232,17 +232,17 @@ for (const hz of [30, 60, 120]) {
     for (let seed = 1; seed <= 8; seed++) {
       const run = game.createRun(seeded(seed * 19937));
       for (let index = 0; index < 30; index++) {
-        const row = game.makeRow(run, 0), next = game.makeRow(run, -22.4);
+        const row = game.makeRow(run, 0), next = game.makeRow(run, -24.8);
         for (let target = 0; target < 6; target++) {
           for (let wrong = 0; wrong < 6; wrong++) {
             let position = {x: row.rings[wrong].x, y: row.rings[wrong].y};
             const input = {x: position.x / 4.2, y: position.y / 3.4}, dt = 1 / hz;
             const state = game.createRun(seeded(1));
-            state.speed = 28; state.spacing = 22.4; state.target = target;
+            state.speed = 30; state.spacing = 24.8; state.target = target;
             game.resolve(state, wrong === target ? null : wrong, 0);
             state.rows = [{...next, crossed: false}];
             let outcome;
-            for (let frame = 0; frame < hz && !outcome; frame++) {
+            for (let frame = 0; frame < hz * 1.1 && !outcome; frame++) {
               const previous = position;
               position = game.steer(position, input, keysToward(next.rings[target], input, dt), dt);
               outcome = game.advance(state, dt, previous, position)[0];
@@ -258,13 +258,13 @@ for (const hz of [30, 60, 120]) {
     for (let seed = 1; seed <= 8; seed++) {
       const run = game.createRun(seeded(seed * 19937));
       for (let index = 0; index < 36; index++) {
-        const row = game.makeRow(run, -22.4);
+        const row = game.makeRow(run, -24.8);
         for (let target = 0; target < 6; target++) {
           for (const x of [-4.2, 4.2]) for (const y of [-3.4, 3.4]) {
             let position = {x, y};
             const input = {x: x / 4.2, y: y / 3.4}, dt = 1 / hz;
             const state = game.createRun(seeded(1));
-            state.speed = 28; state.spacing = 22.4; state.target = target;
+            state.speed = 30; state.spacing = 24.8; state.target = target;
             game.resolve(state, null, 1);
             state.rows = [{...row, crossed: false}];
             let outcome;
