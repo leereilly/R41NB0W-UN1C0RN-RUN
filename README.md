@@ -9,7 +9,7 @@ Created for [js13kGames](https://js13kgames.com/) competition.
 
 <p align="center">
   <a href="index.html">
-    <img src="assets/gameplay.png" alt="Rainbow Unicorn Run gameplay" width="720">
+    <img src="assets/gameplay.webp" alt="Rainbow Unicorn Run gameplay" width="720">
   </a>
 </p>
 
