@@ -1,0 +1,8 @@
+- generic [active] [ref=f2e1]:
+  - generic:
+    - generic:
+      - heading "RAINBOW UNICORN RUN" [level=1]: RAINBOWUNICORN RUN
+      - generic: CHASE THE COLOR. FIND YOUR FLOW.Follow the glowing ring in rainbow order.Hit dead center for PERFECT streaks.Wrong color or missed row? Lose a heart.
+      - button "LET'S FLY · SPACE" [ref=f2e3] [cursor=pointer]
+      - generic: "MOUSE / WASD / ARROWS TO STEER · SPACE TO PLAY3 HEARTS · 6 COLORS · ONE MORE RAINBOWVR: LOOK TO STEER · SELECT OR GAZE TO PLAY"
+  - status

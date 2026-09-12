@@ -19,24 +19,24 @@ Fly a unicorn through a neon tunnel, chase glowing rings in rainbow order, and t
 
 Download and open `index.html` in a modern browser, or serve it locally using the commands below. The link above points to the game file; no hosted demo is configured.
 
-**Controls:** Mouse, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>, or arrow keys to steer · <kbd>Space</kbd> or **Let's Fly / Play Again** to start or replay after a run. Holding Space does not repeatedly restart. Center the highlighted ring on the aiming dot; keyboard steering holds its destination when released.
+**Controls:** Mouse, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>, or arrow keys to steer · <kbd>Space</kbd> or **Let's Fly / Play Again** to start or replay after a run. Holding Space does not repeatedly restart. Center a highlighted ring on the aiming dot; keyboard steering holds its destination when released.
 
-**VR:** On compatible WebXR browsers and headsets, serve over HTTPS or localhost and select **Enter VR**. Look to steer; use the headset's select action or look at the circular target for a moment to start/replay. An in-headset HUD shows the next color, score, best, hearts, and perfect chain.
+**VR:** On compatible WebXR browsers and headsets, serve over HTTPS or localhost and select **Enter VR**. Look to steer; use the headset's select action or look at the circular target for a moment to start/replay. An in-headset HUD shows the active cue, score, best, hearts, and perfect chain.
 
 ## Features
 
 - **Find your flow:** start at speed 22, with the first ring row about 0.82 seconds away. Each completed rainbow builds toward speed 30, while wider gaps between rows keep the color choices readable. Clockwise or counterclockwise routes vary each run; gentle arcs, zigzags, and narrow/wide layouts replace random shuffles and spinning targets.
-- **Read the route:** the required color has a bright outer halo and a color-name label. The HUD shows rainbow progress and an approaching-row meter.
-- **Make precision pay:** perfect hits, three-hit chain bonuses, rainbow celebrations, short musical cues, and compact particle bursts reward good flying. Spoken color cues are limited to the start, completed rainbows, and mistakes, where supported.
+- **Read the route:** actionable rings have bright outer halos and color-name labels. The HUD shows rainbow progress and an approaching-row meter. Every row gets a visible and, where supported, spoken cue; after one to five single-color cues, an occasional **“Not COLOR”** cue makes every other color valid.
+- **Make precision pay:** perfect hits, three-hit chain bonuses, rainbow celebrations, short musical cues, and compact particle bursts reward good flying. The initial row is announced at the start, and exactly one fresh cue follows every non-terminal crossing.
 - **Chase your best:** a local best score survives reloads when browser storage is available. End-of-run results show score, best/new best, completed rainbows, and perfect hits, with one-button replay.
 
 ## Rules and scoring
 
-Collect **red → orange → yellow → green → blue → purple**, then repeat.
+Progress through **red → orange → yellow → green → blue → purple**, then repeat. A normal cue accepts only its named color. A **“Not COLOR”** cue accepts any of the other five rings; that valid hit completes the current rainbow step once.
 
 | Result | Reward / penalty |
 | --- | --- |
-| Correct ring | `100 × current multiplier`, then increase the multiplier by one |
+| Valid ring for the active cue | `100 × current multiplier`, then increase the multiplier by one |
 | PERFECT (within 0.40 units of the center) | An extra `50 × current multiplier`, using the multiplier **before** it increases |
 | Every third consecutive PERFECT | Another **300 points**, included in the displayed total |
 | Ordinary correct hit | Keeps the score multiplier, but breaks the perfect chain |
@@ -70,7 +70,7 @@ The **compressed, one-file ZIP** targets ≤13,000 bytes; readable source HTML i
 
 The current game imports Three.js from a CDN, so this archive is not self-contained and requires network access. Meeting the ZIP-size target is **not** a claim that the game meets all competition submission rules.
 
-Tests cover reset, scoring, precision thresholds, misses, game over, interpolated crossings, storage failures, replay-key rules, layout bounds, and real keyboard smoothing at 30/60/120 Hz. Seeded simulations include long streaks, all wrong-color transitions, and recovery from steering-limit corners. Desktop browser checks cover start/replay, keyboard/mouse input, feedback, saved-score reload, and resize. WebXR remains supported, but headset behavior requires testing on actual hardware.
+Tests cover reset, scoring, precision thresholds, misses, game over, deterministic cue countdowns and negative-color selection, production cue presentation/speech wiring, interpolated crossings, storage failures, replay-key rules, layout bounds, and real keyboard smoothing at 30/60/120 Hz. Seeded simulations include long streaks, all wrong-color transitions, and recovery from steering-limit corners. Desktop browser checks cover start/replay, keyboard/mouse input, feedback, saved-score reload, and resize. WebXR remains supported, but headset behavior requires testing on actual hardware.
 
 ## Contributing
 

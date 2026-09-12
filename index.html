@@ -8,6 +8,7 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#05010f;color:#fff;font-family:monospace;user-select:none}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 canvas#c,#ui,#flash{position:fixed;inset:0}
 #ui{pointer-events:none;text-shadow:0 0 8px #b8f}
 .rainbow{background:linear-gradient(90deg,#ff4068,#ff9820,#ffe020,#40ff88,#40bbff,#c070ff);background-clip:text;-webkit-background-clip:text;color:transparent}
@@ -21,7 +22,11 @@ small{display:block;font-size:12px;color:#d2bde9;letter-spacing:1px;margin-top:5
 #sequence span{padding:5px 8px;border-bottom:2px solid transparent;font-size:12px}
 #sequence .next{border-color:currentColor;background:#ffffff18;border-radius:4px}
 #aim{position:absolute;top:50%;left:50%;width:12px;height:12px;margin:-6px;border:1px solid #fff9;border-radius:50%;box-shadow:0 0 5px #fff8}
-#target{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);text-align:center;font-size:21px;white-space:nowrap}
+#target{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap}
+#cue{display:flex;justify-content:center;align-items:center;gap:14px;min-height:40px}
+#cueTarget{font-size:27px;font-weight:900;padding:4px 12px;border:2px solid currentColor;border-radius:8px;background:#090216dd}
+#cueNot{font-size:19px;font-weight:bold;color:#fff;background:#6d1239;padding:5px 10px;border-radius:7px}
+#cueNot s{text-decoration-thickness:3px;text-decoration-color:#fff}
 #meter{height:4px;background:#ffffff20;margin-top:9px;border-radius:8px;overflow:hidden}
 #fill{height:100%;background:currentColor;transform-origin:left}
 #feedback{position:absolute;top:30%;left:0;right:0;text-align:center;font-size:clamp(22px,5vw,42px);font-weight:bold;transition:opacity .1s;white-space:pre-line}
@@ -48,7 +53,7 @@ button:hover,button:focus-visible{background:#582184;outline:2px solid #fff;outl
       <div><div id="combo">x1</div><small id="chain">AIM FOR THE CENTER</small></div>
     </div>
     <div id="sequence"></div><div id="aim"></div>
-    <div id="target"><div id="next"></div><small id="progress"></small><div id="meter"><div id="fill"></div></div></div>
+    <div id="target"><div id="cue"><span id="cueText" class="sr"></span><strong id="cueTarget" aria-hidden="true"></strong><span id="cueNot" aria-hidden="true" hidden></span></div><span id="cueLive" class="sr" role="status" aria-live="polite" aria-atomic="true"></span><small id="progress"></small><div id="meter"><div id="fill"></div></div></div>
     <div id="feedback" role="status" aria-live="polite"></div>
   </div>
   <div id="panel">
@@ -93,15 +98,112 @@ globalThis.RainbowRun = (() => {
     }
   }
 
+  const cueCountdown = sample => 1 + Math.floor(clamp(sample, 0, 1 - Number.EPSILON) * 5);
+  const negativeCueColor = (target, sample) =>
+    (target + 1 + Math.floor(clamp(sample, 0, 1 - Number.EPSILON) * 5)) % 6;
+
+  function nextCue(state, target, negativeSample, resetSample) {
+    if (state > 0) return {cue: {target, not: null}, state: state - 1};
+    return {
+      cue: {target, not: negativeCueColor(target, negativeSample)},
+      state: cueCountdown(resetSample)
+    };
+  }
+
+  function matchesCue(cue, color) {
+    if (!cue || color === null || color === undefined) return false;
+    return cue.not === null ? color === cue.target : color !== cue.not;
+  }
+
+  function formatCue(cue) {
+    if (!cue) return "";
+    if (cue.not !== null) {
+      const excluded = names[cue.not].toLowerCase();
+      return `Not ${excluded}.`;
+    }
+    const target = names[cue.target].toLowerCase();
+    return target[0].toUpperCase() + target.slice(1) + ".";
+  }
+
+  function formatCuePresentation(cue) {
+    if (!cue) return {accessible: "", target: "", negative: ""};
+    return {
+      accessible: formatCue(cue),
+      target: cue.not === null ? "ENTER " + names[cue.target] : "",
+      negative: cue.not === null ? "" : "NOT " + names[cue.not] + " ✕"
+    };
+  }
+
+  function cueForRun(run) {
+    if (run.phase !== "playing") return run.cue = null;
+    const negative = run.cueRemaining === 0;
+    const result = nextCue(run.cueRemaining, run.target,
+      negative ? run.random() : 0, negative ? run.random() : 0);
+    run.cueRemaining = result.state;
+    return run.cue = result.cue;
+  }
+
+  function createCuePresenter({
+    getRun, speech, Utterance, show, drawXR, announceFallback = () => {}
+  }) {
+    let activeUtterance = null;
+    const cancellationErrors = new Set(["canceled", "interrupted"]);
+    function cancel() {
+      activeUtterance = null;
+    }
+    function presentNextCue() {
+      const run = getRun(), cue = cueForRun(run);
+      if (!cue) return false;
+      const presentation = formatCuePresentation(cue);
+      show(cue, presentation);
+      if (speech && Utterance) {
+        let fallbackAnnounced = false;
+        const announceOnce = () => {
+          if (fallbackAnnounced || run.phase !== "playing") return;
+          fallbackAnnounced = true;
+          announceFallback(presentation.accessible);
+        };
+        try {
+          cancel();
+          speech.cancel();
+          const utterance = new Utterance(presentation.accessible);
+          utterance.lang = "en-US"; utterance.rate = 1.15;
+          activeUtterance = utterance;
+          utterance.onerror = event => {
+            if (activeUtterance !== utterance) return;
+            activeUtterance = null;
+            if (!cancellationErrors.has(event?.error)) announceOnce();
+          };
+          utterance.onend = () => {
+            if (activeUtterance === utterance) activeUtterance = null;
+          };
+          speech.speak(utterance);
+        } catch {
+          activeUtterance = null;
+          announceOnce();
+        }
+      } else {
+        announceFallback(presentation.accessible);
+      }
+      drawXR(cue, presentation);
+      return true;
+    }
+    function afterCrossing(event) {
+      return !event.over && getRun().phase === "playing" ? presentNextCue() : false;
+    }
+    return {presentNextCue, afterCrossing, cancel};
+  }
+
   function createRun(random = Math.random) {
     const run = {
       phase: "playing", score: 0, multiplier: 1, hearts: 3, target: 0,
       rainbows: 0, perfects: 0, chain: 0, speed: 22, spacing: 26, recovery: 0,
       random, direction: random() < .5 ? -1 : 1, rowNumber: 0,
       route: {phase: -Math.PI / 2, x: 0, y: 0, radius: 2.3},
-      destination: null, rows: []
+      destination: null, rows: [], cue: null
     };
     for (let i = 0; i < 4; i++) run.rows.push(makeRow(run, -18 - i * run.spacing));
+    run.cueRemaining = cueCountdown(random());
     return run;
   }
 
@@ -135,7 +237,9 @@ globalThis.RainbowRun = (() => {
 
   function resolve(run, color, distance) {
     if (run.phase !== "playing") return null;
-    if (color !== run.target) {
+    const cue = run.cue || {target: run.target, not: null};
+    run.cue = null;
+    if (!matchesCue(cue, color)) {
       run.hearts--;
       run.multiplier = 1;
       run.chain = 0;
@@ -217,7 +321,9 @@ globalThis.RainbowRun = (() => {
   }
 
   const shouldStart = (phase, code, repeat) => phase !== "playing" && code === "Space" && !repeat;
-  return {names, colors, bestKey, clamp, loadBest, saveBest, createRun, makeRow, resolve, travel, advance, steer, shouldStart};
+  return {names, colors, bestKey, clamp, loadBest, saveBest, cueCountdown, negativeCueColor,
+    nextCue, matchesCue, formatCue, formatCuePresentation, cueForRun, createCuePresenter, createRun,
+    makeRow, resolve, travel, advance, steer, shouldStart};
 })();
 </script>
 <script type="module">
@@ -236,7 +342,7 @@ try {
   run.phase = "menu";
   const input = {x: 0, y: 0}, keys = {};
   let feedbackTime = 0, flashTime = 0, gazeTime = 0, feedbackText = "";
-  let lastSpeech = -Infinity, isXR = false, newBest = false;
+  let isXR = false, newBest = false;
 
   const renderer = new THREE.WebGLRenderer({canvas: $("c"), antialias: true});
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -313,7 +419,7 @@ try {
       const {ring, halo, label} = rowViews[index][color];
       ring.position.set(point.x, point.y, row.z);
       ring.visible = run.phase === "playing" && !row.crossed;
-      const target = color === run.target;
+      const target = rules.matchesCue(run.cue, color);
       ring.material.color.copy(palette[color]).multiplyScalar(target ? 1 : .48);
       halo.visible = target;
       halo.material.color.copy(palette[color]).lerp(glowWhite, .6);
@@ -387,24 +493,36 @@ try {
   function stopAudio() {
     for (const voice of voices) voice.stop();
     voices.clear();
-    if (speech) speech.cancel();
+    try {
+      cuePresenter.cancel();
+      if (speech) speech.cancel();
+    } catch (error) { warn("Speech could not be stopped: " + error.message); }
   }
-  function sayTarget(force = false) {
-    if (!speech || !globalThis.SpeechSynthesisUtterance || run.phase !== "playing") return;
-    const now = performance.now();
-    if (!force && now - lastSpeech < 2000) return;
-    speech.cancel();
-    const utterance = new SpeechSynthesisUtterance(names[run.target].toLowerCase());
-    utterance.lang = "en-US"; utterance.rate = 1.15;
-    speech.speak(utterance); lastSpeech = now;
+  function showCue(cue, presentation) {
+    $("cueText").textContent = presentation.accessible;
+    $("cueTarget").textContent = presentation.target;
+    $("cueTarget").hidden = !presentation.target;
+    $("cueTarget").style.color = cue && cue.not === null ? colors[cue.target] : "#fff";
+    $("cueNot").hidden = !presentation.negative;
+    $("cueNot").innerHTML = presentation.negative ?
+      `NOT <s>${names[cue.not]}</s> ✕` : "";
   }
+  function announceCueFallback(text) {
+    $("cueLive").textContent = "";
+    $("cueLive").textContent = text;
+  }
+  const cuePresenter = rules.createCuePresenter({
+    getRun: () => run, speech, Utterance: globalThis.SpeechSynthesisUtterance,
+    show: showCue, drawXR, announceFallback: announceCueFallback
+  });
+  const {presentNextCue} = cuePresenter;
 
   const hudCanvas = textCanvas(1024, 640), hudContext = hudCanvas.getContext("2d");
   const hudTexture = new THREE.CanvasTexture(hudCanvas);
   const xrHud = mesh(camera, new THREE.PlaneGeometry(5.2, 3.25),
     new THREE.MeshBasicMaterial({map: hudTexture, transparent: true, depthTest: false}), 0, 0, -4);
   xrHud.renderOrder = 10; xrHud.visible = false;
-  function drawXR() {
+  function drawXR(cue = run.cue, presentation = rules.formatCuePresentation(cue)) {
     const ctx = hudContext;
     ctx.clearRect(0, 0, 1024, 640);
     ctx.textAlign = "center";
@@ -417,7 +535,16 @@ try {
       text(`SCORE ${run.score}   BEST ${Math.max(best, run.score)}   X${run.multiplier}`, 42, 30);
       text("HEARTS " + run.hearts + "   RAINBOWS " + run.rainbows, 84, 26);
       text(feedbackText, 175, 32, feedbackTime > 0 ? "#ffe97b" : "transparent");
-      text("NEXT " + names[run.target], 570, 38, colors[run.target]);
+      if (cue) {
+        text(presentation.target, 530, 48, colors[cue.target]);
+        if (presentation.negative) {
+          const warning = presentation.negative;
+          text(warning, 580, 30, "#ff8ab5");
+          ctx.strokeStyle = "#fff"; ctx.lineWidth = 5;
+          const width = ctx.measureText(warning).width;
+          ctx.beginPath(); ctx.moveTo(512 - width / 2, 570); ctx.lineTo(512 + width / 2, 584); ctx.stroke();
+        }
+      }
       text("PERFECT CHAIN " + run.chain, 612, 24);
     } else {
       text(run.phase === "menu" ? "RAINBOW UNICORN RUN" : "RAINBOW OVER", 100, 40);
@@ -447,7 +574,6 @@ try {
     $("combo").textContent = "x" + run.multiplier;
     $("chain").textContent = run.chain ? `PERFECT ${run.chain} · ${3 - run.chain % 3} TO +300` : "AIM FOR THE CENTER";
     $("hearts").textContent = "♥".repeat(run.hearts) + "♡".repeat(3 - run.hearts);
-    $("next").textContent = "NEXT " + names[run.target];
     $("target").style.color = colors[run.target];
     $("progress").textContent = `${run.rainbows} RAINBOWS · ${run.target}/6 COLORS`;
     $("sequence").innerHTML = names.map((name, index) =>
@@ -464,13 +590,13 @@ try {
     run = rules.createRun();
     position = {x: 0, y: 0}; rig.position.set(0, 0, 0);
     feedbackTime = flashTime = gazeTime = trailTime = 0;
-    feedbackText = ""; lastSpeech = -Infinity; newBest = false;
+    feedbackText = ""; newBest = false;
     $("flash").style.opacity = 0; $("feedback").textContent = "";
     $("feedback").style.opacity = 0;
     for (const particle of particles) { particle.life = 0; particle.object.visible = false; }
     particleIndex = 0;
     clock.getDelta();
-    updateHUD(); drawRows(0); sayTarget(true);
+    presentNextCue(); updateHUD(); drawRows(0);
   }
   function endRun() {
     stopAudio(); clearInput(); gazeTime = 0;
@@ -490,7 +616,7 @@ try {
       feedbackText += " · STAY " + names[run.target];
       flashTime = .28;
       tone(100, .22, 0, "sawtooth");
-      if (event.over) endRun(); else sayTarget();
+      if (event.over) endRun();
     } else {
       feedbackText = event.chainBonus ? "PERFECT CHAIN!" : event.kind === "perfect" ? "PERFECT!" : "NICE!";
       if (event.rainbow) feedbackText = "RAINBOW! " + feedbackText;
@@ -500,7 +626,6 @@ try {
       if (event.chainBonus) tone(1318, .25, .1);
       if (event.rainbow) {
         [659, 784, 1046].forEach((frequency, index) => tone(frequency, .24, .08 * index));
-        sayTarget(true);
       }
       burst(event.hit.x, event.hit.y, 0, colors[event.hit.color], event.kind === "perfect" ? 22 : 12);
       feedbackText += " +" + event.points;
@@ -510,6 +635,7 @@ try {
     $("feedback").textContent = feedbackText;
     $("feedback").style.color = event.points ? "#ffe97b" : "#ff90ad";
     $("feedback").style.opacity = 1;
+    cuePresenter.afterCrossing(event);
     updateHUD();
   }
 

@@ -1,0 +1,10 @@
+- generic [active] [ref=f1e1]:
+  - generic:
+    - generic:
+      - generic: "0"
+      - generic: BEST 0
+  - generic [ref=f1e3]:
+    - heading "PRISM DRIFT" [level=1] [ref=f1e4]
+    - generic [ref=f1e5]: fly through · collect beats
+    - button "PLAY" [ref=f1e6] [cursor=pointer]
+    - generic [ref=f1e7]: Space/Enter start · Arrows/WASD steer · Space=slow-mo · Esc pause & invert · R restart

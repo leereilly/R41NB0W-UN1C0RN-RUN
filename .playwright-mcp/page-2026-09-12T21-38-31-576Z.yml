@@ -1,0 +1,26 @@
+- generic [active] [ref=f2e1]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic: "0"
+          - generic: BEST 0
+        - generic: ♥♥♥
+        - generic:
+          - generic: x1
+          - generic: AIM FOR THE CENTER
+      - generic:
+        - generic: RED
+        - generic: ORANGE
+        - generic: YELLOW
+        - generic: GREEN
+        - generic: BLUE
+        - generic: PURPLE
+      - generic:
+        - generic:
+          - generic: Red.
+          - strong [aria-hidden]: ENTER RED
+        - status
+        - generic: 0 RAINBOWS · 0/6 COLORS
+      - status
+  - status

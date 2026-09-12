@@ -5,12 +5,331 @@ import vm from "node:vm";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const source = html.match(/<script id="gameplay-core">([\s\S]*?)<\/script>/)?.[1];
+const moduleSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
 assert.ok(source, "Production gameplay core must be embedded in the shipped HTML");
+assert.ok(moduleSource, "Production browser integration must be embedded in the shipped HTML");
 const context = vm.createContext({});
 vm.runInContext(source, context);
 const game = context.RainbowRun;
 const plain = value => JSON.parse(JSON.stringify(value));
 const seeded = seed => () => ((seed = Math.imul(seed, 1664525) + 1013904223 >>> 0) / 2 ** 32);
+
+function productionFunction(name) {
+  const start = moduleSource.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `Production function ${name} must exist`);
+  const open = moduleSource.indexOf("{", start);
+  let depth = 0;
+  for (let index = open; index < moduleSource.length; index++) {
+    if (moduleSource[index] === "{") depth++;
+    if (moduleSource[index] === "}" && --depth === 0) return moduleSource.slice(open + 1, index);
+  }
+  assert.fail(`Production function ${name} must have a complete body`);
+}
+
+const occurrences = (source, text) => source.split(text).length - 1;
+
+test("cue countdown is inclusive 1..5 and resets on fresh runs", () => {
+  assert.deepEqual([0, .199999, .2, .4, .6, .8, 1].map(game.cueCountdown), [1, 1, 2, 3, 4, 5, 5]);
+  const first = game.createRun(() => 0);
+  first.cueRemaining = 0;
+  game.cueForRun(first);
+  const fresh = game.createRun(() => 0);
+  assert.equal(fresh.cueRemaining, 1);
+});
+
+test("negative cue colors exclude the target and reach every other color", () => {
+  for (let target = 0; target < 6; target++) {
+    const choices = [0, .2, .4, .6, .8].map(sample => game.negativeCueColor(target, sample));
+    assert.equal(new Set(choices).size, 5);
+    assert.ok(choices.every(color => color !== target));
+    assert.deepEqual(choices.sort(), [0, 1, 2, 3, 4, 5].filter(color => color !== target));
+  }
+});
+
+test("cue sequence has exactly the reset number of normal cues before a negative", () => {
+  let state = 2;
+  const cues = [];
+  for (let i = 0; i < 8; i++) {
+    const result = game.nextCue(state, 4, .4, .6);
+    state = result.state;
+    cues.push(result.cue.not);
+  }
+  assert.deepEqual(cues, [null, null, 1, null, null, null, null, 1]);
+  assert.equal(state, 4);
+});
+
+test("cue formatting presents either a positive target or a standalone exclusion", () => {
+  assert.equal(game.formatCue({target: 4, not: null}), "Blue.");
+  assert.equal(game.formatCue({target: 4, not: 0}), "Not red.");
+  assert.deepEqual(plain(game.formatCuePresentation({target: 4, not: 0})), {
+    accessible: "Not red.", target: "", negative: "NOT RED ✕"
+  });
+});
+
+test("shared cue matcher handles every excluded color and rejects absent hits", () => {
+  for (let excluded = 0; excluded < 6; excluded++) {
+    const cue = {target: (excluded + 1) % 6, not: excluded};
+    assert.deepEqual(
+      Array.from({length: 6}, (_, color) => game.matchesCue(cue, color)),
+      Array.from({length: 6}, (_, color) => color !== excluded)
+    );
+  }
+  assert.equal(game.matchesCue(null, 0), false);
+  assert.equal(game.matchesCue({target: 0, not: null}, null), false);
+  assert.equal(game.matchesCue({target: 0, not: null}, undefined), false);
+});
+
+test("negative cues accept five colors, reject the excluded color, and advance one step", () => {
+  for (let excluded = 0; excluded < 6; excluded++) {
+    for (let color = 0; color < 6; color++) {
+      const run = game.createRun(() => .5);
+      run.target = 2;
+      run.cue = {target: run.target, not: excluded};
+      const event = game.resolve(run, color, .5);
+      if (color === excluded) {
+        assert.equal(event.kind, "wrong");
+        assert.equal(run.target, 2);
+        assert.equal(run.hearts, 2);
+      } else {
+        assert.equal(event.kind, "correct");
+        assert.equal(run.target, 3);
+        assert.equal(run.hearts, 3);
+      }
+    }
+    const miss = game.createRun(() => .5);
+    miss.target = 2;
+    miss.cue = {target: 2, not: excluded};
+    assert.equal(game.resolve(miss, null, 1).kind, "miss");
+    assert.equal(miss.target, 2);
+  }
+});
+
+test("positive cues remain single-target and direct resolution retains that fallback", () => {
+  for (let target = 0; target < 6; target++) {
+    for (let color = 0; color < 6; color++) {
+      const run = game.createRun(() => .5);
+      run.target = target;
+      run.cue = {target, not: null};
+      const event = game.resolve(run, color, .5);
+      assert.equal(event.kind, color === target ? "correct" : "wrong");
+      assert.equal(run.target, color === target ? (target + 1) % 6 : target);
+    }
+    const direct = game.createRun(() => .5);
+    direct.target = target;
+    assert.ok(game.resolve(direct, target, .5).points > 0);
+  }
+});
+
+test("production cue presenter synchronizes accessible, desktop, XR, and speech output", () => {
+  const run = game.createRun(() => 0);
+  run.cueRemaining = 0;
+  const order = [], shown = [], xr = [], announced = [];
+  class Utterance {
+    constructor(text) {
+      this.text = text;
+      order.push(["utterance", text]);
+    }
+  }
+  const speech = {
+    cancel: () => order.push(["cancel"]),
+    speak: utterance => order.push(["speak", utterance.text])
+  };
+  const presenter = game.createCuePresenter({
+    getRun: () => run,
+    speech,
+    Utterance,
+    show: (cue, presentation) => shown.push(plain({cue, presentation})),
+    drawXR: (cue, presentation) => xr.push(plain({cue, presentation})),
+    announceFallback: text => announced.push(text)
+  });
+
+  assert.equal(presenter.presentNextCue(), true);
+  assert.deepEqual(shown, [{
+    cue: {target: 0, not: 1},
+    presentation: {accessible: "Not orange.", target: "", negative: "NOT ORANGE ✕"}
+  }]);
+  assert.deepEqual(xr, shown);
+  assert.deepEqual(order, [
+    ["cancel"], ["utterance", "Not orange."], ["speak", "Not orange."]
+  ]);
+  assert.deepEqual(announced, []);
+  assert.deepEqual(plain(run.cue), shown[0].cue);
+});
+
+test("cue presenter uses the live fallback only without speech or after a synchronous speech error", () => {
+  for (const unavailable of [
+    {speech: null, Utterance: class {}},
+    {speech: {cancel() {}, speak() {}}, Utterance: null}
+  ]) {
+    const announced = [];
+    const presenter = game.createCuePresenter({
+      getRun: () => game.createRun(() => 0),
+      ...unavailable,
+      show: () => {},
+      drawXR: () => {},
+      announceFallback: text => announced.push(text)
+    });
+    assert.equal(presenter.presentNextCue(), true);
+    assert.deepEqual(announced, ["Red."]);
+  }
+
+  for (const operation of ["cancel", "setup", "speak"]) {
+    const announced = [], spoken = [];
+    class Utterance {
+      constructor(text) {
+        if (operation === "setup") throw new Error("setup failed");
+        this.text = text;
+      }
+    }
+    const presenter = game.createCuePresenter({
+      getRun: () => game.createRun(() => 0),
+      speech: {
+        cancel() {
+          if (operation === "cancel") throw new Error("cancel failed");
+          spoken.push("cancel");
+        },
+        speak() {
+          if (operation === "speak") throw new Error("speak failed");
+          spoken.push("speak");
+        }
+      },
+      Utterance,
+      show: () => {},
+      drawXR: () => {},
+      announceFallback: text => announced.push(text)
+    });
+    assert.equal(presenter.presentNextCue(), true);
+    assert.deepEqual(announced, ["Red."]);
+    assert.equal(spoken.includes("speak"), false);
+  }
+});
+
+test("active asynchronous speech errors use the live fallback only once", () => {
+  const announced = [];
+  let utterance;
+  const presenter = game.createCuePresenter({
+    getRun: () => game.createRun(() => 0),
+    speech: {cancel() {}, speak(value) { utterance = value; }},
+    Utterance: class { constructor(text) { this.text = text; } },
+    show: () => {},
+    drawXR: () => {},
+    announceFallback: text => announced.push(text)
+  });
+
+  assert.equal(presenter.presentNextCue(), true);
+  utterance.onerror({error: "synthesis-failed"});
+  utterance.onerror({error: "synthesis-failed"});
+  assert.deepEqual(announced, ["Red."]);
+});
+
+test("stale, cancelled, and completed utterances cannot announce a fallback", () => {
+  const run = game.createRun(() => 0);
+  const utterances = [], announced = [];
+  const presenter = game.createCuePresenter({
+    getRun: () => run,
+    speech: {cancel() {}, speak(value) { utterances.push(value); }},
+    Utterance: class { constructor(text) { this.text = text; } },
+    show: () => {},
+    drawXR: () => {},
+    announceFallback: text => announced.push(text)
+  });
+
+  presenter.presentNextCue();
+  presenter.presentNextCue();
+  utterances[0].onerror({error: "synthesis-failed"});
+  utterances[1].onerror({error: "canceled"});
+  utterances[1].onerror({error: "synthesis-failed"});
+
+  presenter.presentNextCue();
+  presenter.cancel();
+  utterances[2].onerror({error: "interrupted"});
+  utterances[2].onerror({error: "synthesis-failed"});
+
+  presenter.presentNextCue();
+  run.phase = "over";
+  utterances[3].onerror({error: "synthesis-failed"});
+
+  run.phase = "playing";
+  presenter.presentNextCue();
+  utterances[4].onend();
+  utterances[4].onerror({error: "synthesis-failed"});
+  assert.deepEqual(announced, []);
+});
+
+test("production crossing wiring presents exactly once unless the event is terminal", () => {
+  const startBody = productionFunction("start");
+  const rewardBody = productionFunction("reward");
+  const stopAudioBody = productionFunction("stopAudio");
+  const desktopBody = productionFunction("showCue");
+  const fallbackBody = productionFunction("announceCueFallback");
+  const xrBody = productionFunction("drawXR");
+  const rowsBody = productionFunction("drawRows");
+  const cueMarkup = html.match(/<div id="cue"[\s\S]*?<\/div>/)?.[0];
+  const liveMarkup = html.match(/<span id="cueLive"[\s\S]*?<\/span>/)?.[0];
+  assert.ok(cueMarkup && !/aria-live|role="status"/.test(cueMarkup),
+    "Visible semantic cue must not be a live region");
+  assert.match(liveMarkup, /class="sr"/);
+  assert.match(liveMarkup, /role="status"/);
+  assert.match(liveMarkup, /aria-live="polite"/);
+  assert.ok(fallbackBody.includes('$("cueLive").textContent = text;'));
+  assert.ok(stopAudioBody.includes("cuePresenter.cancel();"));
+  assert.equal(occurrences(startBody, "presentNextCue();"), 1);
+  assert.ok(startBody.indexOf("presentNextCue();") < startBody.indexOf("drawRows(0);"),
+    "The first cue must be active before rows are rendered or movement begins");
+  assert.equal(occurrences(rewardBody, "cuePresenter.afterCrossing(event);"), 1);
+  for (const field of ["accessible", "target", "negative"]) {
+    assert.ok(desktopBody.includes(`presentation.${field}`), `Desktop must render ${field}`);
+  }
+  assert.ok(desktopBody.includes('$("cueTarget").hidden = !presentation.target;'));
+  for (const field of ["target", "negative"]) {
+    assert.ok(xrBody.includes(`presentation.${field}`), `XR must render ${field}`);
+  }
+  assert.ok(rowsBody.includes("rules.matchesCue(run.cue, color)"));
+  assert.equal(rowsBody.includes("color === run.target"), false);
+
+  for (const kind of ["correct", "wrong", "miss"]) {
+    const run = game.createRun(() => 0);
+    const shown = [], spoken = [];
+    const presenter = game.createCuePresenter({
+      getRun: () => run,
+      speech: {cancel: () => spoken.push("cancel"), speak: () => spoken.push("speak")},
+      Utterance: class {},
+      show: cue => shown.push(plain(cue)),
+      drawXR: () => {},
+      announceFallback: () => assert.fail("speech and live fallback must not run together")
+    });
+    assert.equal(presenter.afterCrossing({kind, over: false}), true);
+    assert.equal(shown.length, 1);
+    assert.deepEqual(spoken, ["cancel", "speak"]);
+
+    run.phase = "over";
+    assert.equal(presenter.afterCrossing({kind, over: true}), false);
+    assert.equal(shown.length, 1);
+    assert.deepEqual(spoken, ["cancel", "speak"]);
+  }
+});
+
+test("run cues are canonical, follow advanced targets, retain mistakes, and stop at game over", () => {
+  const run = game.createRun(() => 0);
+  assert.equal(run.cue, null);
+  const first = game.cueForRun(run);
+  assert.equal(first.target, 0);
+  assert.equal(run.cue, first);
+  game.resolve(run, 0, .2);
+  assert.equal(run.cue, null);
+  const second = game.cueForRun(run);
+  assert.equal(second.target, 1);
+  assert.equal(run.cue, second);
+  game.resolve(run, second.not, .2);
+  assert.equal(run.cue, null);
+  assert.equal(game.cueForRun(run).target, 1);
+  game.resolve(run, null, 1);
+  assert.equal(game.cueForRun(run).target, 1);
+  const terminal = game.resolve(run, null, 1);
+  assert.equal(terminal.over, true);
+  assert.equal(game.cueForRun(run), null);
+  assert.equal(run.cue, null);
+});
 
 test("new runs reset all gameplay and route state without reusing rows", () => {
   const run = game.createRun(seeded(1));
@@ -74,6 +393,20 @@ function crossingRun(z = -.11) {
   run.rows = [{...run.rows[0], z, rings: [{color: 0, x: 0, y: 0}]}];
   return run;
 }
+
+test("crossings use the active negative cue for hit acceptance", () => {
+  const allowed = crossingRun();
+  allowed.cue = {target: 0, not: 1};
+  const accepted = game.advance(allowed, .01, {x: 0, y: 0}, {x: 0, y: 0});
+  assert.equal(accepted[0].kind, "perfect");
+  assert.equal(allowed.target, 1);
+
+  const excluded = crossingRun();
+  excluded.cue = {target: 0, not: 0};
+  const rejected = game.advance(excluded, .01, {x: 0, y: 0}, {x: 0, y: 0});
+  assert.equal(rejected[0].kind, "wrong");
+  assert.equal(excluded.target, 0);
+});
 
 test("crossings interpolate steering and score each row exactly once", () => {
   const run = crossingRun();
